@@ -1,92 +1,154 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>AR動作テスト</title>
-<style>
-  html,body{margin:0;height:100%;background:#1b1b1b;overflow:hidden}
-  #v{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#1b1b1b}
-  #c{position:fixed;inset:0;width:100%;height:100%}
-  #log,#stat{position:fixed;left:0;right:0;padding:8px 10px;background:rgba(0,0,0,.78);
-    color:#7CFC9A;font:12px/1.7 ui-monospace,monospace;white-space:pre-wrap;z-index:9}
-  #log{top:0;max-height:45%;overflow:auto}
-  #stat{bottom:0;color:#FFD98A}
-  #go{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:10;
-    padding:18px 34px;font-size:17px;border:0;border-radius:999px;background:#fff}
-</style>
+  <meta charset="utf-8">
+  <title>AR 虫捕りゲーム</title>
+  <!-- 3D描画用のA-Frameライブラリ -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; }
+    /* ウェブカメラ映像を全画面の最背面に配置 */
+    #webcam {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: -1;
+    }
+    /* UI（スコア）オーバーレイ */
+    #ui {
+      position: absolute; top: 20px; left: 20px;
+      color: white; font-family: sans-serif;
+      font-size: 24px; font-weight: bold;
+      z-index: 10; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+    }
+    /* A-Frameのキャンバス背景を透過してカメラ映像を見せる */
+    .a-canvas { background-color: transparent !important; }
+  </style>
 </head>
 <body>
 
-<video id="v" playsinline muted autoplay></video>
-<canvas id="c"></canvas>
-<div id="log"></div>
-<div id="stat">まだ開始していません</div>
-<button id="go">テスト開始</button>
+  <!-- 1. 背景用カメラ映像（森の代わり） -->
+  <video id="webcam" autoplay playsinline muted></video>
+  
+  <!-- 2. スコアUI -->
+  <div id="ui">捕獲数: <span id="score">0</span> 匹</div>
 
-<script>
-var L=document.getElementById('log'), S=document.getElementById('stat');
-function log(m){ L.textContent += m + '\n'; }
-window.onerror = function(m,s,l,c){ log('■ ERR ' + m + ' @' + l + ':' + c); };
-addEventListener('unhandledrejection', function(e){ log('■ REJ ' + e.reason); });
+  <!-- 3. A-Frame 3Dシーン（背景透過・標準UI無効化） -->
+  <a-scene 
+    renderer="alpha: true; antialias: true" 
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false"
+    background="transparent: true">
+    
+    <!-- カメラと虫眼鏡（カーソル） -->
+    <a-camera look-controls="pointerLockEnabled: false">
+      <!-- 視線でクリック判定を行う（fuse: true） -->
+      <!-- fuseTimeout: 1500 (1.5秒見つめると捕獲アクション発動) -->
+      <a-entity cursor="fuse: true; fuseTimeout: 1500"
+                position="0 0 -1"
+                geometry="primitive: ring; radiusInner: 0.03; radiusOuter: 0.05"
+                material="color: white; shader: flat; opacity: 0.8"
+                animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 1500; from: 1 1 1; to: 0.1 0.1 0.1"
+                animation__mouseleave="property: scale; startEvents: mouseleave; easing: easeInCubic; dur: 500; to: 1 1 1">
+        <!-- 虫眼鏡の「持ち手」部分（デザイン装飾） -->
+        <a-entity geometry="primitive: box; width: 0.01; height: 0.08; depth: 0.01" 
+                  position="0.04 -0.05 0" 
+                  rotation="0 0 -45" 
+                  material="color: #aaaaaa">
+        </a-entity>
+      </a-entity>
+    </a-camera>
 
-log('1) https(secure) = ' + window.isSecureContext);
-log('2) getUserMedia  = ' + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-log('3) iframe内       = ' + (window.self !== window.top));
+    <!-- 虫を配置するための空のコンテナ -->
+    <a-entity id="bugs-container"></a-entity>
+  </a-scene>
 
-var v=document.getElementById('v'), c=document.getElementById('c'), g=c.getContext('2d');
-var a=0, gotOrient=false;
-function fit(){ c.width=innerWidth; c.height=innerHeight; }
-addEventListener('resize', fit); fit();
+  <script>
+    // --- 1. カメラ起動処理 ---
+    async function setupWebcam() {
+      const video = document.getElementById('webcam');
+      try {
+        // Chromebookの環境を考慮し、理想は背面(environment)だが、無ければ前面を許可
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        video.srcObject = stream;
+        
+        // 前面(user)カメラが選ばれた場合は、鏡のように左右反転させる
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        if (settings.facingMode !== 'environment') {
+          video.style.transform = 'scaleX(-1)'; 
+        }
+      } catch (e) {
+        console.error('カメラエラー:', e);
+        alert('カメラの起動に失敗しました。権限を確認してください。');
+      }
+    }
+    setupWebcam();
 
-document.getElementById('go').onclick = async function(){
-  this.remove();
+    // --- 2. 虫（3Dオブジェクト）の生成と捕獲処理 ---
+    const bugsContainer = document.getElementById('bugs-container');
+    const scoreElement = document.getElementById('score');
+    let score = 0;
 
-  // ── 動きセンサー（iOSはタップ直後に呼ぶ必要あり）
-  var D = window.DeviceOrientationEvent;
-  if(D && typeof D.requestPermission === 'function'){
-    try{ log('4) 動きセンサー許可 = ' + await D.requestPermission()); }
-    catch(e){ log('4) 動きセンサー ERR ' + e); }
-  } else {
-    log('4) 動きセンサー = 許可不要 or 非対応(' + !!D + ')');
-  }
-  addEventListener('deviceorientation', function(e){
-    if(e.alpha===null && e.beta===null) return;
-    a = e.alpha || 0; gotOrient = true;
-  });
+    // ユーザーの周囲（半径2〜5m）のランダムな位置を計算
+    function getRandomPosition() {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 2 + Math.random() * 3;
+      const height = -1 + Math.random() * 2; // 目線より少し上下
+      return {
+        x: Math.cos(angle) * radius,
+        y: height,
+        z: Math.sin(angle) * radius
+      };
+    }
 
-  // ── カメラ
-  try{
-    var st = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ ideal:'environment' } }, audio:false });
-    v.srcObject = st;
-    await v.play();
-    log('5) カメラ = OK');
-  }catch(e){
-    log('5) カメラ ERR ' + e.name + ' : ' + e.message);
-  }
+    function spawnBug() {
+      const bug = document.createElement('a-entity');
+      const pos = getRandomPosition();
+      bug.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+      
+      // 虫の見た目（ひとまずシンプルな球体を使用）
+      bug.setAttribute('geometry', 'primitive: sphere; radius: 0.2');
+      
+      // 最初は景色に溶け込んでいる状態（半透明の緑色で隠れている）
+      bug.setAttribute('material', 'color: #55cc55; opacity: 0.1; transparent: true');
+      
+      // 虫の動き（フワフワ上下するアニメーション）
+      bug.setAttribute('animation', `property: position; to: ${pos.x} ${pos.y + 0.5} ${pos.z}; loop: true; dir: alternate; dur: 2000; easing: easeInOutSine`);
 
-  setInterval(function(){
-    S.textContent = '映像 ' + v.videoWidth + '×' + v.videoHeight +
-      '  readyState=' + v.readyState +
-      '\nセンサー ' + (gotOrient ? ('OK alpha=' + Math.round(a) + '°') : '受信なし');
-  }, 500);
+      // 虫眼鏡（カーソル）が虫を捉えた時の処理（発見！）
+      bug.addEventListener('mouseenter', () => {
+        bug.setAttribute('material', 'color', '#ff4444'); // 赤色になって姿を現す
+        bug.setAttribute('material', 'opacity', '0.9');
+      });
 
-  loop();
-};
+      // 視線が外れた時の処理（また隠れる）
+      bug.addEventListener('mouseleave', () => {
+        bug.setAttribute('material', 'color', '#55cc55');
+        bug.setAttribute('material', 'opacity', '0.1');
+      });
 
-function loop(){
-  g.clearRect(0,0,c.width,c.height);
-  g.save();
-  g.translate(c.width/2, c.height/2);
-  g.rotate(-a * Math.PI/180);
-  g.fillStyle = 'rgba(255,70,70,.85)';
-  g.fillRect(-70,-70,140,140);
-  g.fillStyle = '#fff';
-  g.fillRect(-6,-96,12,26);
-  g.restore();
-  requestAnimationFrame(loop);
-}
-</script>
+      // 1.5秒見つめ続けた（捕獲完了した）時の処理
+      bug.addEventListener('click', () => {
+        score++;
+        scoreElement.innerText = score;
+        bug.parentNode.removeChild(bug); // 空間から虫を削除
+        
+        // 捕獲後、2秒遅れて新しい虫を空間に出現させる
+        setTimeout(spawnBug, 2000);
+      });
+
+      bugsContainer.appendChild(bug);
+    }
+
+    // ゲーム開始時、初期状態で3匹配置
+    for (let i = 0; i < 3; i++) {
+      spawnBug();
+    }
+  </script>
 </body>
 </html>
