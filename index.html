@@ -1,154 +1,316 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <title>AR 虫捕りゲーム</title>
-  <!-- 3D描画用のA-Frameライブラリ -->
-  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <meta charset="UTF-8">
+  <title>森の昆虫 3Dシミュレーション</title>
   <style>
-    body { margin: 0; overflow: hidden; background-color: #000; }
-    /* ウェブカメラ映像を全画面の最背面に配置 */
-    #webcam {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      object-fit: cover;
-      z-index: -1;
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #051005;
+      font-family: sans-serif;
     }
-    /* UI（スコア）オーバーレイ */
     #ui {
-      position: absolute; top: 20px; left: 20px;
-      color: white; font-family: sans-serif;
-      font-size: 24px; font-weight: bold;
-      z-index: 10; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      color: #e0f0e0;
+      background: rgba(0, 20, 5, 0.75);
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       pointer-events: none;
     }
-    /* A-Frameのキャンバス背景を透過してカメラ映像を見せる */
-    .a-canvas { background-color: transparent !important; }
   </style>
 </head>
 <body>
+  <div id="ui">
+    <strong>森の昆虫 3Dシミュレーション</strong><br>
+    <small>ドラッグ: 視点回転 | スクロール: ズーム</small>
+  </div>
 
-  <!-- 1. 背景用カメラ映像（森の代わり） -->
-  <video id="webcam" autoplay playsinline muted></video>
-  
-  <!-- 2. スコアUI -->
-  <div id="ui">捕獲数: <span id="score">0</span> 匹</div>
-
-  <!-- 3. A-Frame 3Dシーン（背景透過・標準UI無効化） -->
-  <a-scene 
-    renderer="alpha: true; antialias: true" 
-    vr-mode-ui="enabled: false" 
-    device-orientation-permission-ui="enabled: false"
-    background="transparent: true">
-    
-    <!-- カメラと虫眼鏡（カーソル） -->
-    <a-camera look-controls="pointerLockEnabled: false">
-      <!-- 視線でクリック判定を行う（fuse: true） -->
-      <!-- fuseTimeout: 1500 (1.5秒見つめると捕獲アクション発動) -->
-      <a-entity cursor="fuse: true; fuseTimeout: 1500"
-                position="0 0 -1"
-                geometry="primitive: ring; radiusInner: 0.03; radiusOuter: 0.05"
-                material="color: white; shader: flat; opacity: 0.8"
-                animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 1500; from: 1 1 1; to: 0.1 0.1 0.1"
-                animation__mouseleave="property: scale; startEvents: mouseleave; easing: easeInCubic; dur: 500; to: 1 1 1">
-        <!-- 虫眼鏡の「持ち手」部分（デザイン装飾） -->
-        <a-entity geometry="primitive: box; width: 0.01; height: 0.08; depth: 0.01" 
-                  position="0.04 -0.05 0" 
-                  rotation="0 0 -45" 
-                  material="color: #aaaaaa">
-        </a-entity>
-      </a-entity>
-    </a-camera>
-
-    <!-- 虫を配置するための空のコンテナ -->
-    <a-entity id="bugs-container"></a-entity>
-  </a-scene>
+  <!-- Three.js & OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
   <script>
-    // --- 1. カメラ起動処理 ---
-    async function setupWebcam() {
-      const video = document.getElementById('webcam');
-      try {
-        // Chromebookの環境を考慮し、理想は背面(environment)だが、無ければ前面を許可
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
-        });
-        video.srcObject = stream;
-        
-        // 前面(user)カメラが選ばれた場合は、鏡のように左右反転させる
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        if (settings.facingMode !== 'environment') {
-          video.style.transform = 'scaleX(-1)'; 
-        }
-      } catch (e) {
-        console.error('カメラエラー:', e);
-        alert('カメラの起動に失敗しました。権限を確認してください。');
+    // ----------------------------------------------------
+    // 1. シーン・カメラ・レンダラーの設定
+    // ----------------------------------------------------
+    const scene = new THREE.Scene();
+    const fogColor = new THREE.Color(0x0a1a0d);
+    scene.background = fogColor;
+    scene.fog = new THREE.FogExp2(fogColor, 0.04); // 森の奥深さを表現するフォグ
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 2.5, 5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0.5, 0);
+
+    // ----------------------------------------------------
+    // 2. ライティング（森の光環境）
+    // ----------------------------------------------------
+    // 環境光（木陰の薄暗い光）
+    const ambientLight = new THREE.AmbientLight(0x2d4a32, 1.2);
+    scene.add(ambientLight);
+
+    // 太陽光（木漏れ日）
+    const sunLight = new THREE.DirectionalLight(0xfff5cc, 2.0);
+    sunLight.position.set(8, 15, 6);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 30;
+    sunLight.shadow.camera.left = -10;
+    sunLight.shadow.camera.right = 10;
+    sunLight.shadow.camera.top = 10;
+    sunLight.shadow.camera.bottom = -10;
+    scene.add(sunLight);
+
+    // ----------------------------------------------------
+    // 3. 森の環境（地面と樹木）の構築
+    // ----------------------------------------------------
+    // 地面（落ち葉混じりの土壌）
+    const groundGeo = new THREE.PlaneGeometry(80, 80);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2b14,
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // 木を生成する関数
+    function createTree(x, z) {
+      const tree = new THREE.Group();
+
+      // 幹
+      const trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, 3.5, 8);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.9 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.75;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+      tree.add(trunk);
+
+      // 葉（複数層）
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x0f3d14, roughness: 0.8 });
+      for (let i = 0; i < 3; i++) {
+        const leafGeo = new THREE.ConeGeometry(1.8 - i * 0.3, 2.2, 8);
+        const leaves = new THREE.Mesh(leafGeo, leafMat);
+        leaves.position.y = 2.8 + i * 1.2;
+        leaves.castShadow = true;
+        tree.add(leaves);
       }
+
+      tree.position.set(x, 0, z);
+      return tree;
     }
-    setupWebcam();
 
-    // --- 2. 虫（3Dオブジェクト）の生成と捕獲処理 ---
-    const bugsContainer = document.getElementById('bugs-container');
-    const scoreElement = document.getElementById('score');
-    let score = 0;
-
-    // ユーザーの周囲（半径2〜5m）のランダムな位置を計算
-    function getRandomPosition() {
+    // 周囲にランダムに樹木を配置
+    for (let i = 0; i < 35; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 2 + Math.random() * 3;
-      const height = -1 + Math.random() * 2; // 目線より少し上下
-      return {
-        x: Math.cos(angle) * radius,
-        y: height,
-        z: Math.sin(angle) * radius
-      };
+      const radius = 3 + Math.random() * 25; // 中央スペースを空ける
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      scene.add(createTree(x, z));
     }
 
-    function spawnBug() {
-      const bug = document.createElement('a-entity');
-      const pos = getRandomPosition();
-      bug.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
-      
-      // 虫の見た目（ひとまずシンプルな球体を使用）
-      bug.setAttribute('geometry', 'primitive: sphere; radius: 0.2');
-      
-      // 最初は景色に溶け込んでいる状態（半透明の緑色で隠れている）
-      bug.setAttribute('material', 'color: #55cc55; opacity: 0.1; transparent: true');
-      
-      // 虫の動き（フワフワ上下するアニメーション）
-      bug.setAttribute('animation', `property: position; to: ${pos.x} ${pos.y + 0.5} ${pos.z}; loop: true; dir: alternate; dur: 2000; easing: easeInOutSine`);
+    // ----------------------------------------------------
+    // 4. 昆虫（甲虫モデル）の精密構築
+    // ----------------------------------------------------
+    function createInsect() {
+      const insect = new THREE.Group();
 
-      // 虫眼鏡（カーソル）が虫を捉えた時の処理（発見！）
-      bug.addEventListener('mouseenter', () => {
-        bug.setAttribute('material', 'color', '#ff4444'); // 赤色になって姿を現す
-        bug.setAttribute('material', 'opacity', '0.9');
+      // マテリアル（外骨格の光沢感）
+      const chitinMat = new THREE.MeshStandardMaterial({
+        color: 0x12100d,
+        roughness: 0.25,
+        metalness: 0.6
+      });
+      const eyeMat = new THREE.MeshStandardMaterial({
+        color: 0x880000,
+        roughness: 0.1,
+        metalness: 0.3
+      });
+      const wingMat = new THREE.MeshStandardMaterial({
+        color: 0x4a5d3f,
+        transparent: true,
+        opacity: 0.55,
+        roughness: 0.2
       });
 
-      // 視線が外れた時の処理（また隠れる）
-      bug.addEventListener('mouseleave', () => {
-        bug.setAttribute('material', 'color', '#55cc55');
-        bug.setAttribute('material', 'opacity', '0.1');
+      // --- 頭部 (Head) ---
+      const headGroup = new THREE.Group();
+      const headGeo = new THREE.SphereGeometry(0.18, 16, 16);
+      headGeo.scale(1, 0.7, 1.2);
+      const head = new THREE.Mesh(headGeo, chitinMat);
+      head.castShadow = true;
+      headGroup.add(head);
+
+      // 複眼
+      const eyeGeo = new THREE.SphereGeometry(0.05, 12, 12);
+      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeL.position.set(0.12, 0.05, 0.08);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = -0.12;
+      headGroup.add(eyeL, eyeR);
+
+      // 触角
+      const antGeo = new THREE.CylinderGeometry(0.008, 0.005, 0.4, 6);
+      antGeo.translate(0, 0.2, 0); // 原点を付け根に移動
+      const antL = new THREE.Mesh(antGeo, chitinMat);
+      antL.position.set(0.06, 0.08, 0.18);
+      antL.rotation.x = Math.PI / 3;
+      antL.rotation.z = -Math.PI / 6;
+      const antR = antL.clone();
+      antR.position.x = -0.06;
+      antR.rotation.z = Math.PI / 6;
+      headGroup.add(antL, antR);
+
+      headGroup.position.set(0, 0.28, 0.55);
+      insect.add(headGroup);
+
+      // --- 胸部 (Thorax) ---
+      const thoraxGeo = new THREE.SphereGeometry(0.28, 16, 16);
+      thoraxGeo.scale(1.1, 0.8, 0.9);
+      const thorax = new THREE.Mesh(thoraxGeo, chitinMat);
+      thorax.position.set(0, 0.32, 0.25);
+      thorax.castShadow = true;
+      insect.add(thorax);
+
+      // --- 腹部 (Abdomen) ---
+      const abdomenGeo = new THREE.SphereGeometry(0.38, 16, 16);
+      abdomenGeo.scale(1.0, 0.85, 1.5);
+      const abdomen = new THREE.Mesh(abdomenGeo, chitinMat);
+      abdomen.position.set(0, 0.35, -0.35);
+      abdomen.castShadow = true;
+      insect.add(abdomen);
+
+      // --- 羽 (Wings) ---
+      const wingGeo = new THREE.PlaneGeometry(0.28, 0.8);
+      wingGeo.rotateX(-Math.PI / 2);
+      wingGeo.translate(0, 0, -0.4); // 蝶番部分を原点に
+
+      const wingL = new THREE.Mesh(wingGeo, wingMat);
+      wingL.position.set(0.08, 0.44, 0.05);
+      wingL.rotation.z = -0.15;
+
+      const wingR = new THREE.Mesh(wingGeo, wingMat);
+      wingR.position.set(-0.08, 0.44, 0.05);
+      wingR.rotation.z = 0.15;
+
+      insect.add(wingL, wingR);
+
+      // --- 脚 6本 (Legs) ---
+      const legs = [];
+      const legPositions = [
+        { z: 0.38, rotY: 0.35 },  // 前脚
+        { z: 0.22, rotY: 0.0 },   // 中脚
+        { z: 0.05, rotY: -0.45 }  // 後脚
+      ];
+
+      legPositions.forEach((pos, pairIndex) => {
+        [-1, 1].forEach((side) => {
+          const legGroup = new THREE.Group();
+
+          // 太もも (Femur)
+          const femurGeo = new THREE.CylinderGeometry(0.02, 0.015, 0.35, 6);
+          femurGeo.translate(0, -0.175, 0);
+          const femur = new THREE.Mesh(femurGeo, chitinMat);
+          femur.rotation.z = side * (Math.PI / 2.8);
+
+          // すね (Tibia)
+          const tibiaGeo = new THREE.CylinderGeometry(0.012, 0.008, 0.38, 6);
+          tibiaGeo.translate(0, -0.19, 0);
+          const tibia = new THREE.Mesh(tibiaGeo, chitinMat);
+          tibia.position.set(side * 0.3, -0.1, 0);
+          tibia.rotation.z = -side * (Math.PI / 6);
+
+          legGroup.add(femur);
+          legGroup.add(tibia);
+
+          legGroup.position.set(side * 0.18, 0.28, pos.z);
+          legGroup.rotation.y = side * pos.rotY;
+
+          insect.add(legGroup);
+
+          legs.push({
+            group: legGroup,
+            side: side,
+            pair: pairIndex,
+            baseY: legGroup.rotation.y
+          });
+        });
       });
 
-      // 1.5秒見つめ続けた（捕獲完了した）時の処理
-      bug.addEventListener('click', () => {
-        score++;
-        scoreElement.innerText = score;
-        bug.parentNode.removeChild(bug); // 空間から虫を削除
+      return { mesh: insect, legs, wings: [wingL, wingR] };
+    }
+
+    const insectData = createInsect();
+    scene.add(insectData.mesh);
+
+    // ----------------------------------------------------
+    // 5. アニメーションループ（歩行運動）
+    // ----------------------------------------------------
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const time = clock.getElapsedTime();
+
+      // 地面上を前進・旋回する動作
+      const pathRadius = 2.0;
+      insectData.mesh.position.x = Math.cos(time * 0.4) * pathRadius;
+      insectData.mesh.position.z = Math.sin(time * 0.4) * pathRadius;
+      
+      // 進行方向を向く
+      const nextX = Math.cos((time + 0.01) * 0.4) * pathRadius;
+      const nextZ = Math.sin((time + 0.01) * 0.4) * pathRadius;
+      insectData.mesh.lookAt(nextX, 0, nextZ);
+
+      // 脚の歩行運動（交互三脚歩行）
+      insectData.legs.forEach((leg) => {
+        // 左右・前後で位相をずらす
+        const phase = time * 7.0 + (leg.side * Math.PI / 2) + (leg.pair * Math.PI / 3);
         
-        // 捕獲後、2秒遅れて新しい虫を空間に出現させる
-        setTimeout(spawnBug, 2000);
+        // 前後スイング
+        leg.group.rotation.y = leg.baseY + Math.sin(phase) * 0.22;
+        // 上下持ち上げ
+        leg.group.position.y = 0.28 + Math.max(0, Math.sin(phase) * 0.06);
       });
 
-      bugsContainer.appendChild(bug);
+      // 羽の微妙な振動（呼吸・興奮表現）
+      insectData.wings[0].rotation.z = -0.15 + Math.sin(time * 12) * 0.03;
+      insectData.wings[1].rotation.z = 0.15 - Math.sin(time * 12) * 0.03;
+
+      controls.update();
+      renderer.render(scene, camera);
     }
 
-    // ゲーム開始時、初期状態で3匹配置
-    for (let i = 0; i < 3; i++) {
-      spawnBug();
-    }
+    animate();
+
+    // ----------------------------------------------------
+    // 6. ウィンドウリサイズ対応
+    // ----------------------------------------------------
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   </script>
 </body>
 </html>
