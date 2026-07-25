@@ -425,9 +425,12 @@ function applyOrientation(){
 const _v=new THREE.Vector3(), fwd=new THREE.Vector3(), camPos=new THREE.Vector3();
 let hover=null;
 function updateHover(){
-  const cam = (MODE==='xr'&&renderer.xr.isPresenting) ? renderer.xr.getCamera() : camera;
-  cam.getWorldPosition(camPos);
-  cam.getWorldDirection(fwd);
+  if(MODE==='xr' && renderer.xr.isPresenting){
+    // r128: getCamera(camera) は引数必須。呼ぶとXRの頭の姿勢がcameraへ書き戻される
+    try{ renderer.xr.getCamera(camera); }catch(e){}
+  }
+  camera.getWorldPosition(camPos);
+  camera.getWorldDirection(fwd);
   let best=Math.cos(CFG.CATCH_ANGLE*deg), pick=null;
   for(const g of bugs){
     if(g.userData.caught) continue;
