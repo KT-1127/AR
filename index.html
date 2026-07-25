@@ -1,316 +1,597 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>森の昆虫 3Dシミュレーション</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #051005;
-      font-family: sans-serif;
-    }
-    #ui {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      color: #e0f0e0;
-      background: rgba(0, 20, 5, 0.75);
-      padding: 10px 16px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      pointer-events: none;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>AR むしとり ── 歩いてさがす森の昆虫採集</title>
+<style>
+  :root{
+    --paper:#F3EDE0; --ink:#23201B; --frame:#4A3B2E; --shu:#B23A2E;
+    --mincho:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    --gothic:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#051005;
+    font-family:var(--gothic);color:var(--ink);overscroll-behavior:none}
+  canvas{display:block}
+
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;
+    padding:calc(env(safe-area-inset-top) + 14px) 16px}
+  .tally{font-family:var(--mincho);color:var(--paper);
+    text-shadow:0 1px 5px rgba(0,0,0,.9);letter-spacing:.14em;font-size:12px;line-height:1.7}
+  .tally b{font-size:25px;font-weight:500}
+  #mode{margin-top:4px;font-size:10px;color:#9fb08e;letter-spacing:.1em}
+  #warn{margin-top:10px;font-size:11px;color:#F0D9A0;letter-spacing:.05em;line-height:1.7;
+    text-shadow:0 1px 4px rgba(0,0,0,.9);max-width:21em;display:none}
+
+  #net{position:fixed;left:50%;top:50%;width:128px;height:128px;margin:-64px 0 0 -64px;
+    pointer-events:none;z-index:5;transition:transform .1s ease}
+  #net.swing{transform:scale(.7)}
+  #net .ring{fill:none;stroke:rgba(243,237,224,.42);stroke-width:2}
+  #net .mesh{stroke:rgba(243,237,224,.2);stroke-width:.7;fill:none}
+  #net.on .ring{stroke:rgba(255,250,235,.96);stroke-width:2.6}
+  #net.on .mesh{stroke:rgba(255,250,235,.5)}
+
+  #target{position:fixed;left:0;right:0;top:calc(50% + 80px);text-align:center;z-index:5;
+    font-family:var(--mincho);font-size:15px;letter-spacing:.18em;color:#FFFAEB;
+    text-shadow:0 1px 6px rgba(0,0,0,.95);opacity:0;transition:opacity .12s}
+  #target.on{opacity:1}
+
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;
+    justify-content:center;align-items:center;padding:0 14px calc(env(safe-area-inset-bottom) + 20px)}
+  button{font-family:var(--gothic);font-size:16px;border:none;cursor:pointer}
+  #swing{pointer-events:auto;background:var(--paper);color:var(--ink);border-radius:999px;
+    padding:16px 40px;letter-spacing:.2em;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.55)}
+  #swing:active{transform:translateY(2px)}
+  .ghost{pointer-events:auto;background:rgba(14,18,11,.62);color:var(--paper);
+    border:1px solid rgba(243,237,224,.36);border-radius:999px;padding:15px 18px;
+    letter-spacing:.12em;font-family:var(--mincho);font-size:14px}
+
+  #stamp{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-11deg);z-index:7;
+    border:3px double var(--shu);color:var(--shu);font-family:var(--mincho);padding:10px 16px;
+    font-size:20px;letter-spacing:.22em;opacity:0;pointer-events:none;
+    background:rgba(243,237,224,.92);border-radius:4px}
+  #stamp.hit{animation:stamp .95s ease-out}
+  @keyframes stamp{0%{opacity:0;transform:translate(-50%,-50%) rotate(-11deg) scale(1.8)}
+    18%{opacity:1;transform:translate(-50%,-50%) rotate(-11deg) scale(1)}
+    72%{opacity:1}100%{opacity:0}}
+
+  .sheet{position:fixed;inset:0;background:rgba(5,16,5,.82);display:none;z-index:20;
+    align-items:center;justify-content:center;padding:20px}
+  .sheet.open{display:flex}
+  .box{width:100%;max-width:540px;max-height:88vh;overflow:auto;background:var(--paper);
+    border:12px solid var(--frame);border-radius:3px;padding:22px 20px 26px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6)}
+  .box h2{margin:0;font-family:var(--mincho);font-size:19px;font-weight:500;letter-spacing:.3em}
+  .box .sub{font-family:var(--mincho);font-size:12px;letter-spacing:.16em;color:#6d675c;
+    margin:6px 0 20px;border-bottom:1px solid #cdc4b2;padding-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px}
+  .cell{border:1px solid #cdc4b2;border-radius:2px;padding:12px 8px;text-align:center;
+    background:#FAF6EE;position:relative;min-height:120px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:6px}
+  .cell .pic{font-size:34px;line-height:1}
+  .cell.empty .pic{opacity:.14;filter:grayscale(1)}
+  .cell .nm{font-family:var(--mincho);font-size:12.5px;letter-spacing:.05em}
+  .cell .tm{font-family:var(--mincho);font-size:10px;color:#8a8275}
+  .cell.empty .nm,.cell.empty .tm{color:#b6ad9c}
+  .cell .shu{position:absolute;right:6px;top:6px;font-family:var(--mincho);font-size:9px;
+    color:var(--shu);border:1px solid var(--shu);border-radius:2px;padding:2px 3px;
+    writing-mode:vertical-rl;letter-spacing:.1em}
+  .close{display:block;width:100%;margin-top:22px;padding:14px;border-radius:2px;
+    background:var(--frame);color:var(--paper);letter-spacing:.24em;font-family:var(--mincho)}
+
+  #start{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:20px;padding:32px;text-align:center;
+    background:radial-gradient(115% 85% at 50% 18%,#3f5a3a 0%,#132014 55%,#050d05 100%)}
+  #start h1{margin:0;font-family:var(--mincho);color:var(--paper);font-weight:500;font-size:25px;
+    letter-spacing:.32em;text-indent:.32em}
+  #start p{margin:0;max-width:23em;line-height:2.0;color:#cfc9ba;font-size:14px;letter-spacing:.04em}
+  #go{background:var(--paper);color:var(--ink);border-radius:999px;padding:17px 42px;
+    letter-spacing:.24em;font-weight:700;font-family:var(--mincho);font-size:17px}
+  #note{font-size:11px;color:#8b8a7c;letter-spacing:.05em;line-height:1.85}
+  #load{color:#a8ad96;font-size:12px;letter-spacing:.2em;font-family:var(--mincho)}
+
+  /* XRのオーバーレイ（DOM Overlay）でもHUDを出す */
+  #hud,.bar,#net,#target,#stamp,.sheet{ /* z-index上で保持 */ }
+</style>
 </head>
 <body>
-  <div id="ui">
-    <strong>森の昆虫 3Dシミュレーション</strong><br>
-    <small>ドラッグ: 視点回転 | スクロール: ズーム</small>
+
+<video id="vid" playsinline muted autoplay style="display:none"></video>
+
+<div id="hud">
+  <div class="tally">みつけた<br><b><span id="n">0</span></b> / 7 しゅるい</div>
+  <div id="mode"></div>
+  <div id="warn"></div>
+</div>
+
+<svg id="net" viewBox="0 0 128 128">
+  <circle class="ring" cx="64" cy="64" r="52"/>
+  <g class="mesh"><path d="M12 64H116M64 12V116"/><circle cx="64" cy="64" r="34"/>
+    <circle cx="64" cy="64" r="17"/><path d="M27 27 101 101M101 27 27 101"/></g>
+</svg>
+<div id="target"></div>
+<div id="stamp">採 集</div>
+
+<div class="bar">
+  <button class="ghost" id="openbox">標本箱</button>
+  <button id="swing">あみをふる</button>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="box">
+    <h2>標 本 箱</h2>
+    <div class="sub" id="boxsub">森の採集記録</div>
+    <div class="grid" id="grid"></div>
+    <button class="close" id="close">採集にもどる</button>
   </div>
+</div>
 
-  <!-- Three.js & OrbitControls CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<div id="start">
+  <h1>AR むしとり</h1>
+  <p id="lead">読み込み中…</p>
+  <button id="go" style="display:none">はじめる</button>
+  <div id="note"></div>
+</div>
 
-  <script>
-    // ----------------------------------------------------
-    // 1. シーン・カメラ・レンダラーの設定
-    // ----------------------------------------------------
-    const scene = new THREE.Scene();
-    const fogColor = new THREE.Color(0x0a1a0d);
-    scene.background = fogColor;
-    scene.fog = new THREE.FogExp2(fogColor, 0.04); // 森の奥深さを表現するフォグ
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+"use strict";
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 2.5, 5);
+/* ══════════════════════════════════════════════════════════════
+   設定
+   ══════════════════════════════════════════════════════════════ */
+const CFG = {
+  CATCH_ANGLE : 8.0,   // 照準の許容角(度)
+  CATCH_DIST  : 2.2,   // この距離(m)まで近づかないと捕れない ← 歩いて近づく肝
+  BUG_SCALE   : 2.4,   // 虫の見かけ倍率
+  TREE_COUNT  : 40,
+  FIELD       : 14,    // 森の半径(m)
+  EYE_HEIGHT  : 1.5,   // 非XR時の目線
+};
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    document.body.appendChild(renderer.domElement);
+const SPECIES = [
+  {key:'kabuto', name:'カブトムシ',        emoji:'🪲', shape:'beetle',      perch:'trunk',  size:0.055, body:0x2a1a0a, accent:0x120d08},
+  {key:'kuwa',   name:'ノコギリクワガタ',  emoji:'🪲', shape:'stag',        perch:'trunk',  size:0.058, body:0x241207, accent:0x120a04},
+  {key:'semi',   name:'アブラゼミ',        emoji:'🐝', shape:'cicada',      perch:'trunk',  size:0.050, body:0x4a3a26, accent:0x2a2015},
+  {key:'tento',  name:'ナナホシテントウ',  emoji:'🐞', shape:'ladybug',     perch:'leaf',   size:0.020, body:0xc0322a, accent:0x151210},
+  {key:'kama',   name:'オオカマキリ',      emoji:'🦗', shape:'mantis',      perch:'leaf',   size:0.080, body:0x5e8038, accent:0x3f5826},
+  {key:'batta',  name:'ショウリョウバッタ',emoji:'🦗', shape:'grasshopper', perch:'ground', size:0.060, body:0x6e8b3d, accent:0x4e6329},
+  {key:'ageha',  name:'アゲハ',            emoji:'🦋', shape:'butterfly',   perch:'air',    size:0.070, body:0xf0d84e, accent:0x241c12},
+];
 
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.target.set(0, 0.5, 0);
+/* ══════════════════════════════════════════════════════════════
+   モード判定
+   ══════════════════════════════════════════════════════════════ */
+let MODE='desktop';   // 'xr' | 'ios' | 'desktop'
+let scene, camera, renderer, controls;
+let running=false;
+const clock=new THREE.Clock();
+const vid=document.getElementById('vid');
+const leadEl=document.getElementById('lead'), noteEl=document.getElementById('note');
+const goBtn=document.getElementById('go'), warnEl=document.getElementById('warn'), modeEl=document.getElementById('mode');
 
-    // ----------------------------------------------------
-    // 2. ライティング（森の光環境）
-    // ----------------------------------------------------
-    // 環境光（木陰の薄暗い光）
-    const ambientLight = new THREE.AmbientLight(0x2d4a32, 1.2);
-    scene.add(ambientLight);
+async function detectMode(){
+  if(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(()=>false)){
+    MODE='xr';
+  } else if(/iPhone|iPad|iPod/.test(navigator.userAgent) &&
+            navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    MODE='ios';
+  } else {
+    MODE='desktop';
+  }
+}
 
-    // 太陽光（木漏れ日）
-    const sunLight = new THREE.DirectionalLight(0xfff5cc, 2.0);
-    sunLight.position.set(8, 15, 6);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 30;
-    sunLight.shadow.camera.left = -10;
-    sunLight.shadow.camera.right = 10;
-    sunLight.shadow.camera.top = 10;
-    sunLight.shadow.camera.bottom = -10;
-    scene.add(sunLight);
+/* ══════════════════════════════════════════════════════════════
+   Three.js 基本
+   ══════════════════════════════════════════════════════════════ */
+function initThree(){
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.05, 300);
+  camera.position.set(0, CFG.EYE_HEIGHT, 0);
 
-    // ----------------------------------------------------
-    // 3. 森の環境（地面と樹木）の構築
-    // ----------------------------------------------------
-    // 地面（落ち葉混じりの土壌）
-    const groundGeo = new THREE.PlaneGeometry(80, 80);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x1e2b14,
-      roughness: 0.9,
-      metalness: 0.1
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+  renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.xr.enabled=(MODE==='xr');
+  document.body.appendChild(renderer.domElement);
 
-    // 木を生成する関数
-    function createTree(x, z) {
-      const tree = new THREE.Group();
+  scene.add(new THREE.AmbientLight(0x556848, 1.5));
+  const sun=new THREE.DirectionalLight(0xfff5cc, 1.9);
+  sun.position.set(6,14,4); sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);
+  Object.assign(sun.shadow.camera,{near:0.5,far:50,left:-18,right:18,top:18,bottom:-18});
+  scene.add(sun);
 
-      // 幹
-      const trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, 3.5, 8);
-      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.9 });
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 1.75;
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
-      tree.add(trunk);
+  addEventListener('resize',()=>{
+    if(MODE==='xr'&&renderer.xr.isPresenting) return;
+    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+}
 
-      // 葉（複数層）
-      const leafMat = new THREE.MeshStandardMaterial({ color: 0x0f3d14, roughness: 0.8 });
-      for (let i = 0; i < 3; i++) {
-        const leafGeo = new THREE.ConeGeometry(1.8 - i * 0.3, 2.2, 8);
-        const leaves = new THREE.Mesh(leafGeo, leafMat);
-        leaves.position.y = 2.8 + i * 1.2;
-        leaves.castShadow = true;
-        tree.add(leaves);
+/* ══════════════════════════════════════════════════════════════
+   森
+   ══════════════════════════════════════════════════════════════ */
+const trunks=[];
+function buildForest(){
+  if(MODE!=='xr'){
+    const ground=new THREE.Mesh(
+      new THREE.CircleGeometry(CFG.FIELD*4,48),
+      new THREE.MeshStandardMaterial({color:0x1e2b14, roughness:0.95}));
+    ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+  }
+  // 影を受ける薄い床（XRでは透明にして現実の床に影だけ落とす）
+  if(MODE==='xr'){
+    const shadowMat=new THREE.ShadowMaterial({opacity:0.28});
+    const sg=new THREE.Mesh(new THREE.PlaneGeometry(200,200), shadowMat);
+    sg.rotation.x=-Math.PI/2; sg.receiveShadow=true; scene.add(sg);
+  }
+
+  const bladeGeo=new THREE.ConeGeometry(0.05,0.5,4);
+  const bladeMat=new THREE.MeshStandardMaterial({color:0x2f4a1e, roughness:1});
+  const grass=new THREE.InstancedMesh(bladeGeo,bladeMat,400);
+  const m=new THREE.Object3D();
+  for(let i=0;i<400;i++){
+    const a=Math.random()*6.283, r=1+Math.random()*CFG.FIELD;
+    m.position.set(Math.cos(a)*r,0.25,Math.sin(a)*r);
+    m.rotation.set(0,Math.random()*6.283,(Math.random()-.5)*0.3);
+    const s=0.6+Math.random()*1.1; m.scale.set(s,s,s);
+    m.updateMatrix(); grass.setMatrixAt(i,m.matrix);
+  }
+  scene.add(grass);
+
+  for(let i=0;i<CFG.TREE_COUNT;i++){
+    const a=Math.random()*6.283, r=2+Math.random()*CFG.FIELD;
+    const x=Math.cos(a)*r, z=Math.sin(a)*r;
+    scene.add(makeTree(x,z));
+    if(r<CFG.FIELD*0.8) trunks.push({x,z});
+  }
+  if(!trunks.length) trunks.push({x:2.5,z:0},{x:-2,z:2});
+}
+function makeTree(x,z){
+  const t=new THREE.Group();
+  const h=3.2+Math.random()*1.8;
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.38,h,8),
+    new THREE.MeshStandardMaterial({color:0x2a1a0a, roughness:0.9}));
+  trunk.position.y=h/2; trunk.castShadow=trunk.receiveShadow=true; t.add(trunk);
+  const leafMat=new THREE.MeshStandardMaterial({color:0x123f16, roughness:0.85});
+  for(let i=0;i<3;i++){
+    const cone=new THREE.Mesh(new THREE.ConeGeometry(1.9-i*0.35,2.3,8), leafMat);
+    cone.position.y=h*0.8+i*1.2; cone.castShadow=true; t.add(cone);
+  }
+  t.position.set(x,0,z); t.rotation.y=Math.random()*6.283; return t;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   昆虫モデル（もらったカブトムシを土台に7種へ展開）
+   ══════════════════════════════════════════════════════════════ */
+function buildInsect(sp){
+  const g=new THREE.Group();
+  const chitin=new THREE.MeshStandardMaterial({color:sp.body, roughness:0.35, metalness:0.4});
+  const dark  =new THREE.MeshStandardMaterial({color:sp.accent, roughness:0.5, metalness:0.3});
+  const glass =new THREE.MeshStandardMaterial({color:0xd8e4cf, transparent:true, opacity:0.4, roughness:0.2, side:THREE.DoubleSide});
+  const body=new THREE.Group(); g.add(body);
+
+  const thorax=new THREE.Mesh(new THREE.SphereGeometry(0.26,14,14), chitin);
+  thorax.geometry.scale(1.1,0.8,0.9); thorax.position.set(0,0.30,0.22); thorax.castShadow=true; body.add(thorax);
+  const abLen=(sp.shape==='mantis'||sp.shape==='grasshopper')?1.8:1.5;
+  const abdomen=new THREE.Mesh(new THREE.SphereGeometry(0.36,14,14), chitin);
+  abdomen.geometry.scale(1.0,0.82,abLen); abdomen.position.set(0,0.33,-0.34); abdomen.castShadow=true; body.add(abdomen);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.17,14,14), chitin);
+  head.geometry.scale(1,0.75,1.2); head.position.set(0,0.28,0.54); body.add(head);
+  const eyeGeo=new THREE.SphereGeometry(0.045,8,8);
+  const eyeMat=new THREE.MeshStandardMaterial({color:0x330000,roughness:0.1,metalness:0.4});
+  [-1,1].forEach(s=>{const e=new THREE.Mesh(eyeGeo,eyeMat); e.position.set(s*0.11,0.32,0.6); body.add(e);});
+
+  for(const pz of [0.36,0.20,0.02]) for(const s of [-1,1]){
+    const leg=new THREE.Group();
+    const femur=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.013,0.32,6), dark);
+    femur.geometry.translate(0,-0.16,0); femur.rotation.z=s*Math.PI/2.8; leg.add(femur);
+    const tibia=new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.007,0.34,6), dark);
+    tibia.geometry.translate(0,-0.17,0); tibia.position.set(s*0.28,-0.09,0); tibia.rotation.z=-s*Math.PI/6; leg.add(tibia);
+    leg.position.set(s*0.17,0.28,pz); body.add(leg);
+  }
+
+  if(sp.shape==='beetle'){
+    const horn=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.04,0.4,6), chitin);
+    horn.position.set(0,0.42,0.62); horn.rotation.x=-0.5; body.add(horn);
+    const tip=new THREE.Mesh(new THREE.ConeGeometry(0.05,0.12,5), chitin);
+    tip.position.set(0,0.60,0.72); tip.rotation.x=-0.5; body.add(tip);
+    addElytra(body,chitin);
+  } else if(sp.shape==='stag'){
+    [-1,1].forEach(s=>{ const jaw=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.02,6,10,Math.PI*0.8), chitin);
+      jaw.position.set(s*0.07,0.28,0.68); jaw.rotation.set(Math.PI/2,0,s*0.5); body.add(jaw); });
+    addElytra(body,chitin);
+  } else if(sp.shape==='cicada'){
+    [-1,1].forEach(s=>{ const w=new THREE.Mesh(new THREE.PlaneGeometry(0.24,0.7), glass);
+      w.position.set(s*0.12,0.4,-0.15); w.rotation.set(-Math.PI/2.2,0,s*0.2); body.add(w); });
+  } else if(sp.shape==='ladybug'){
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(0.34,16,16,0,6.28,0,Math.PI/2), chitin);
+    dome.position.set(0,0.30,-0.1); dome.castShadow=true; body.add(dome);
+    const spotMat=new THREE.MeshStandardMaterial({color:0x111111});
+    for(let i=0;i<7;i++){ const a=i/7*6.28; const s2=new THREE.Mesh(new THREE.CircleGeometry(0.05,8), spotMat);
+      s2.position.set(Math.cos(a)*0.18,0.55,-0.1+Math.sin(a)*0.18); s2.rotation.x=-Math.PI/2; body.add(s2); }
+  } else if(sp.shape==='mantis'){
+    [-1,1].forEach(s=>{
+      const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.015,0.3,6), chitin);
+      arm.position.set(s*0.16,0.34,0.52); arm.rotation.z=s*0.6; body.add(arm);
+      const scy=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.01,0.24,6), chitin);
+      scy.position.set(s*0.26,0.44,0.6); scy.rotation.z=-s*0.5; body.add(scy); });
+    body.scale.set(0.9,0.9,1.15);
+  } else if(sp.shape==='grasshopper'){
+    [-1,1].forEach(s=>{
+      const thigh=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.02,0.4,6), chitin);
+      thigh.position.set(s*0.18,0.3,-0.3); thigh.rotation.z=s*0.5; body.add(thigh);
+      const shin=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.008,0.44,6), chitin);
+      shin.position.set(s*0.32,0.18,-0.42); shin.rotation.z=-s*0.7; body.add(shin); });
+    body.scale.set(0.8,0.8,1.2);
+  } else if(sp.shape==='butterfly'){
+    const wingMat=new THREE.MeshStandardMaterial({color:sp.body, roughness:0.4, side:THREE.DoubleSide, transparent:true, opacity:0.95});
+    const wings=[];
+    [-1,1].forEach(s=>{
+      const up=new THREE.Mesh(new THREE.CircleGeometry(0.34,16,0,Math.PI), wingMat);
+      up.position.set(0,0.4,0.05); up.userData={side:s,part:'up'}; body.add(up); wings.push(up);
+      const lo=new THREE.Mesh(new THREE.CircleGeometry(0.24,16,Math.PI,Math.PI), wingMat);
+      lo.position.set(0,0.4,-0.1); lo.userData={side:s,part:'lo'}; body.add(lo); wings.push(lo); });
+    g.userData.wings=wings;
+  }
+
+  g.scale.setScalar(sp.size*CFG.BUG_SCALE/0.6);
+  g.userData.sp=sp;
+  return g;
+}
+function addElytra(body,mat){
+  const e=new THREE.Mesh(new THREE.SphereGeometry(0.34,14,14,0,6.28,0,Math.PI/2), mat);
+  e.geometry.scale(1,1,1.4); e.position.set(0,0.30,-0.2); e.castShadow=true; body.add(e);
+  const seam=new THREE.Mesh(new THREE.BoxGeometry(0.008,0.02,0.6), new THREE.MeshStandardMaterial({color:0}));
+  seam.position.set(0,0.63,-0.2); body.add(seam);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   虫を配置（XRでは足元付近から数m先に散らす＝歩いて回れる範囲）
+   ══════════════════════════════════════════════════════════════ */
+const bugs=[];
+function placeBugs(){
+  const R = MODE==='xr' ? 3.5 : CFG.FIELD*0.55;   // 配置半径
+  for(const sp of SPECIES){
+    const g=buildInsect(sp);
+    let x,y,z;
+    if(sp.perch==='trunk'){
+      const t=trunks[(Math.random()*trunks.length)|0];
+      const a=Math.random()*6.283;
+      x=t.x+Math.cos(a)*0.4; z=t.z+Math.sin(a)*0.4; y=0.6+Math.random()*1.3;
+      g.lookAt(t.x,y,t.z);
+    } else if(sp.perch==='leaf'){
+      const a=Math.random()*6.283, r=1.2+Math.random()*R;
+      x=Math.cos(a)*r; z=Math.sin(a)*r; y=0.4+Math.random()*0.5;
+    } else if(sp.perch==='ground'){
+      const a=Math.random()*6.283, r=1+Math.random()*R;
+      x=Math.cos(a)*r; z=Math.sin(a)*r; y=0.1;
+    } else {
+      const a=Math.random()*6.283, r=1.5+Math.random()*R*0.6;
+      x=Math.cos(a)*r; z=Math.sin(a)*r; y=0.9+Math.random()*0.9;
+    }
+    g.position.set(x,y,z);
+    g.userData.home=new THREE.Vector3(x,y,z);
+    g.userData.phase=Math.random()*6.283;
+    g.userData.flick=4+Math.random()*7;
+    g.userData.caught=false;
+    scene.add(g); bugs.push(g);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   非XR：向き（iOS=センサー / desktop=OrbitControls）
+   ══════════════════════════════════════════════════════════════ */
+const deg=Math.PI/180;
+let orient=null;
+function onOrient(e){
+  if(e.alpha===null&&e.beta===null&&e.gamma===null) return;
+  orient={alpha:(e.alpha||0)*deg, beta:(e.beta||0)*deg, gamma:(e.gamma||0)*deg};
+}
+const _zee=new THREE.Vector3(0,0,1), _euler=new THREE.Euler();
+const _q0=new THREE.Quaternion(), _q1=new THREE.Quaternion(-Math.SQRT1_2,0,0,Math.SQRT1_2);
+function applyOrientation(){
+  if(!orient) return;
+  const scr=((screen.orientation&&screen.orientation.angle)||window.orientation||0)*deg;
+  _euler.set(orient.beta, orient.alpha, -orient.gamma, 'YXZ');
+  camera.quaternion.setFromEuler(_euler);
+  camera.quaternion.multiply(_q1);
+  camera.quaternion.multiply(_q0.setFromAxisAngle(_zee,-scr));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   照準判定 ── 中央に近く & 一定距離まで寄った虫だけ捕獲可
+   ══════════════════════════════════════════════════════════════ */
+const _v=new THREE.Vector3(), fwd=new THREE.Vector3(), camPos=new THREE.Vector3();
+let hover=null;
+function updateHover(){
+  const cam = (MODE==='xr'&&renderer.xr.isPresenting) ? renderer.xr.getCamera() : camera;
+  cam.getWorldPosition(camPos);
+  cam.getWorldDirection(fwd);
+  let best=Math.cos(CFG.CATCH_ANGLE*deg), pick=null;
+  for(const g of bugs){
+    if(g.userData.caught) continue;
+    _v.copy(g.position).sub(camPos);
+    const dist=_v.length();
+    if(dist>CFG.CATCH_DIST) continue;         // 遠い虫は照準に入っても捕れない
+    _v.divideScalar(dist);
+    const dot=_v.dot(fwd);
+    if(dot>best){ best=dot; pick=g; }
+  }
+  hover=pick;
+  netEl.classList.toggle('on', !!hover);
+  if(hover){ targetEl.textContent=hover.userData.sp.name; targetEl.classList.add('on'); }
+  else targetEl.classList.remove('on');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ループ
+   ══════════════════════════════════════════════════════════════ */
+function tick(){
+  const t=clock.getElapsedTime();
+  for(const g of bugs){
+    if(g.userData.caught) continue;
+    const sp=g.userData.sp, h=g.userData.home, ph=g.userData.phase;
+    if(sp.perch==='air'){
+      g.position.x=h.x+Math.sin(t*0.5+ph)*0.7;
+      g.position.z=h.z+Math.cos(t*0.4+ph)*0.7;
+      g.position.y=h.y+Math.sin(t*0.9+ph)*0.35;
+      g.rotation.y=Math.atan2(Math.cos(t*0.5+ph),-Math.sin(t*0.4+ph));
+      if(g.userData.wings) for(const w of g.userData.wings){
+        const s=w.userData.side, base=w.userData.part==='up'?0.5:0.35;
+        w.rotation.y=s*(base+Math.sin(t*10+ph)*0.5);
       }
-
-      tree.position.set(x, 0, z);
-      return tree;
+    } else {
+      const fk=Math.max(0,Math.sin(t*6.283/g.userData.flick+ph));
+      const tw=Math.pow(fk,12)*0.04;
+      g.position.x=h.x+Math.sin(t*10+ph)*tw;
+      g.rotation.y+=Math.sin(t*13+ph)*tw*0.5;
     }
+  }
+  if(MODE==='xr' && renderer.xr.isPresenting){ /* カメラはXRが駆動 */ }
+  else if(MODE==='ios'){ applyOrientation(); }
+  else if(controls){ controls.update(); }
+  updateHover();
+  renderer.render(scene,camera);
+}
 
-    // 周囲にランダムに樹木を配置
-    for (let i = 0; i < 35; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 3 + Math.random() * 25; // 中央スペースを空ける
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
-      scene.add(createTree(x, z));
-    }
+/* ══════════════════════════════════════════════════════════════
+   捕獲・標本箱
+   ══════════════════════════════════════════════════════════════ */
+const netEl=document.getElementById('net'), targetEl=document.getElementById('target');
+const stampEl=document.getElementById('stamp'), nEl=document.getElementById('n');
+const book=new Map();
+function swing(){
+  netEl.classList.remove('swing'); void netEl.offsetWidth; netEl.classList.add('swing');
+  setTimeout(()=>netEl.classList.remove('swing'),130);
+  if(!hover) return;
+  const sp=hover.userData.sp, g=hover; g.userData.caught=true;
+  let k=0;(function suck(){ k+=0.08; g.scale.multiplyScalar(0.85);
+    g.position.lerp(camPos,0.16); if(k<1) requestAnimationFrame(suck); else g.visible=false; })();
+  if(!book.has(sp.key)){
+    const d=new Date();
+    book.set(sp.key,`${d.getHours()}時${String(d.getMinutes()).padStart(2,'0')}分`);
+    nEl.textContent=book.size;
+  }
+  stampEl.textContent=sp.name;
+  stampEl.classList.remove('hit'); void stampEl.offsetWidth; stampEl.classList.add('hit');
+  hover=null;
+}
+function renderBox(){
+  const grid=document.getElementById('grid'); grid.innerHTML='';
+  for(const sp of SPECIES){
+    const got=book.get(sp.key);
+    const cell=document.createElement('div'); cell.className='cell'+(got?'':' empty');
+    cell.innerHTML=`${got?'<div class="shu">採集済</div>':''}<div class="pic">${sp.emoji}</div>
+      <div class="nm">${got?sp.name:'—'}</div><div class="tm">${got||'みつけていない'}</div>`;
+    grid.appendChild(cell);
+  }
+  document.getElementById('boxsub').textContent=
+    book.size===SPECIES.length?'森の採集記録　── ぜんぶ集まりました':'森の採集記録';
+}
+const sheet=document.getElementById('sheet');
+document.getElementById('openbox').onclick=()=>{renderBox();sheet.classList.add('open');};
+document.getElementById('close').onclick=()=>sheet.classList.remove('open');
+document.getElementById('swing').onclick=swing;
 
-    // ----------------------------------------------------
-    // 4. 昆虫（甲虫モデル）の精密構築
-    // ----------------------------------------------------
-    function createInsect() {
-      const insect = new THREE.Group();
+/* ══════════════════════════════════════════════════════════════
+   起動
+   ══════════════════════════════════════════════════════════════ */
+async function enableSensor(){
+  const D=window.DeviceOrientationEvent; if(!D) return false;
+  if(typeof D.requestPermission==='function'){
+    try{ if(await D.requestPermission()!=='granted') return false; }catch(_){ return false; }
+  }
+  addEventListener('deviceorientation', onOrient); return true;
+}
+async function startCameraBG(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return false;
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    vid.srcObject=st; await vid.play();
+    const tex=new THREE.VideoTexture(vid);
+    tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter;
+    scene.background=tex; return true;
+  }catch(e){ return false; }
+}
 
-      // マテリアル（外骨格の光沢感）
-      const chitinMat = new THREE.MeshStandardMaterial({
-        color: 0x12100d,
-        roughness: 0.25,
-        metalness: 0.6
-      });
-      const eyeMat = new THREE.MeshStandardMaterial({
-        color: 0x880000,
-        roughness: 0.1,
-        metalness: 0.3
-      });
-      const wingMat = new THREE.MeshStandardMaterial({
-        color: 0x4a5d3f,
-        transparent: true,
-        opacity: 0.55,
-        roughness: 0.2
-      });
+async function startXR(){
+  // three r128 の ARButton を使わず手動でセッション開始（DOM Overlayを付ける）
+  const session=await navigator.xr.requestSession('immersive-ar',{
+    requiredFeatures:['local-floor'],
+    optionalFeatures:['dom-overlay'],
+    domOverlay:{root:document.body}
+  });
+  renderer.xr.setReferenceSpaceType('local-floor');
+  await renderer.xr.setSession(session);
+  session.addEventListener('end',()=>{ running=false; });
+  scene.background=null;             // 現実がそのまま背景
+  scene.fog=null;
+  renderer.setAnimationLoop(()=>{ tick(); });
+}
 
-      // --- 頭部 (Head) ---
-      const headGroup = new THREE.Group();
-      const headGeo = new THREE.SphereGeometry(0.18, 16, 16);
-      headGeo.scale(1, 0.7, 1.2);
-      const head = new THREE.Mesh(headGeo, chitinMat);
-      head.castShadow = true;
-      headGroup.add(head);
+goBtn.onclick=async ()=>{
+  goBtn.outerHTML='<div id="load">森をつくっています…</div>';
+  initThree(); buildForest(); placeBugs(); running=true;
 
-      // 複眼
-      const eyeGeo = new THREE.SphereGeometry(0.05, 12, 12);
-      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-      eyeL.position.set(0.12, 0.05, 0.08);
-      const eyeR = eyeL.clone();
-      eyeR.position.x = -0.12;
-      headGroup.add(eyeL, eyeR);
+  if(MODE==='xr'){
+    try{ await startXR(); }
+    catch(e){ warn('ARを起動できませんでした（'+ (e.name||e) +'）'); fallbackDesktop(); loopRAF(); }
+  } else if(MODE==='ios'){
+    const sOK=await enableSensor();
+    const cOK=await startCameraBG();
+    if(!cOK){ fallbackDesktop(); warn('カメラを起動できないため森を表示しています'); }
+    else if(!sOK){ warn('動きセンサーが無いため画面ドラッグで見まわせます'); setupDrag(); }
+    loopRAF();
+  } else {
+    fallbackDesktop(); loopRAF();
+  }
+};
 
-      // 触角
-      const antGeo = new THREE.CylinderGeometry(0.008, 0.005, 0.4, 6);
-      antGeo.translate(0, 0.2, 0); // 原点を付け根に移動
-      const antL = new THREE.Mesh(antGeo, chitinMat);
-      antL.position.set(0.06, 0.08, 0.18);
-      antL.rotation.x = Math.PI / 3;
-      antL.rotation.z = -Math.PI / 6;
-      const antR = antL.clone();
-      antR.position.x = -0.06;
-      antR.rotation.z = Math.PI / 6;
-      headGroup.add(antL, antR);
+function fallbackDesktop(){
+  if(!scene.background) scene.background=new THREE.Color(0x0d1f10);
+  scene.fog=new THREE.FogExp2(0x0d1f10,0.03);
+  controls=new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping=true; controls.enablePan=false;
+  controls.target.set(0,CFG.EYE_HEIGHT,-0.01);
+  controls.minDistance=controls.maxDistance=0.001;
+}
+function setupDrag(){ /* iOSでセンサー拒否時のみ簡易ドラッグ */
+  let d=null;
+  renderer.domElement.addEventListener('pointerdown',e=>d={x:e.clientX,y:e.clientY,yaw:yaw,pit:pit});
+  renderer.domElement.addEventListener('pointermove',e=>{ if(!d)return;
+    yaw=d.yaw+(e.clientX-d.x)*0.005; pit=Math.max(-1.4,Math.min(1.4,d.pit+(e.clientY-d.y)*0.005)); });
+  renderer.domElement.addEventListener('pointerup',()=>d=null);
+}
+let yaw=0,pit=0;
+function loopRAF(){ (function raf(){ if(!running)return; requestAnimationFrame(raf);
+  if(MODE==='ios'&&!orient){ camera.rotation.set(pit,yaw,0,'YXZ'); }
+  tick(); })(); }
 
-      headGroup.position.set(0, 0.28, 0.55);
-      insect.add(headGroup);
+function warn(m){ warnEl.textContent=m; warnEl.style.display='block'; }
 
-      // --- 胸部 (Thorax) ---
-      const thoraxGeo = new THREE.SphereGeometry(0.28, 16, 16);
-      thoraxGeo.scale(1.1, 0.8, 0.9);
-      const thorax = new THREE.Mesh(thoraxGeo, chitinMat);
-      thorax.position.set(0, 0.32, 0.25);
-      thorax.castShadow = true;
-      insect.add(thorax);
-
-      // --- 腹部 (Abdomen) ---
-      const abdomenGeo = new THREE.SphereGeometry(0.38, 16, 16);
-      abdomenGeo.scale(1.0, 0.85, 1.5);
-      const abdomen = new THREE.Mesh(abdomenGeo, chitinMat);
-      abdomen.position.set(0, 0.35, -0.35);
-      abdomen.castShadow = true;
-      insect.add(abdomen);
-
-      // --- 羽 (Wings) ---
-      const wingGeo = new THREE.PlaneGeometry(0.28, 0.8);
-      wingGeo.rotateX(-Math.PI / 2);
-      wingGeo.translate(0, 0, -0.4); // 蝶番部分を原点に
-
-      const wingL = new THREE.Mesh(wingGeo, wingMat);
-      wingL.position.set(0.08, 0.44, 0.05);
-      wingL.rotation.z = -0.15;
-
-      const wingR = new THREE.Mesh(wingGeo, wingMat);
-      wingR.position.set(-0.08, 0.44, 0.05);
-      wingR.rotation.z = 0.15;
-
-      insect.add(wingL, wingR);
-
-      // --- 脚 6本 (Legs) ---
-      const legs = [];
-      const legPositions = [
-        { z: 0.38, rotY: 0.35 },  // 前脚
-        { z: 0.22, rotY: 0.0 },   // 中脚
-        { z: 0.05, rotY: -0.45 }  // 後脚
-      ];
-
-      legPositions.forEach((pos, pairIndex) => {
-        [-1, 1].forEach((side) => {
-          const legGroup = new THREE.Group();
-
-          // 太もも (Femur)
-          const femurGeo = new THREE.CylinderGeometry(0.02, 0.015, 0.35, 6);
-          femurGeo.translate(0, -0.175, 0);
-          const femur = new THREE.Mesh(femurGeo, chitinMat);
-          femur.rotation.z = side * (Math.PI / 2.8);
-
-          // すね (Tibia)
-          const tibiaGeo = new THREE.CylinderGeometry(0.012, 0.008, 0.38, 6);
-          tibiaGeo.translate(0, -0.19, 0);
-          const tibia = new THREE.Mesh(tibiaGeo, chitinMat);
-          tibia.position.set(side * 0.3, -0.1, 0);
-          tibia.rotation.z = -side * (Math.PI / 6);
-
-          legGroup.add(femur);
-          legGroup.add(tibia);
-
-          legGroup.position.set(side * 0.18, 0.28, pos.z);
-          legGroup.rotation.y = side * pos.rotY;
-
-          insect.add(legGroup);
-
-          legs.push({
-            group: legGroup,
-            side: side,
-            pair: pairIndex,
-            baseY: legGroup.rotation.y
-          });
-        });
-      });
-
-      return { mesh: insect, legs, wings: [wingL, wingR] };
-    }
-
-    const insectData = createInsect();
-    scene.add(insectData.mesh);
-
-    // ----------------------------------------------------
-    // 5. アニメーションループ（歩行運動）
-    // ----------------------------------------------------
-    const clock = new THREE.Clock();
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      const time = clock.getElapsedTime();
-
-      // 地面上を前進・旋回する動作
-      const pathRadius = 2.0;
-      insectData.mesh.position.x = Math.cos(time * 0.4) * pathRadius;
-      insectData.mesh.position.z = Math.sin(time * 0.4) * pathRadius;
-      
-      // 進行方向を向く
-      const nextX = Math.cos((time + 0.01) * 0.4) * pathRadius;
-      const nextZ = Math.sin((time + 0.01) * 0.4) * pathRadius;
-      insectData.mesh.lookAt(nextX, 0, nextZ);
-
-      // 脚の歩行運動（交互三脚歩行）
-      insectData.legs.forEach((leg) => {
-        // 左右・前後で位相をずらす
-        const phase = time * 7.0 + (leg.side * Math.PI / 2) + (leg.pair * Math.PI / 3);
-        
-        // 前後スイング
-        leg.group.rotation.y = leg.baseY + Math.sin(phase) * 0.22;
-        // 上下持ち上げ
-        leg.group.position.y = 0.28 + Math.max(0, Math.sin(phase) * 0.06);
-      });
-
-      // 羽の微妙な振動（呼吸・興奮表現）
-      insectData.wings[0].rotation.z = -0.15 + Math.sin(time * 12) * 0.03;
-      insectData.wings[1].rotation.z = 0.15 - Math.sin(time * 12) * 0.03;
-
-      controls.update();
-      renderer.render(scene, camera);
-    }
-
-    animate();
-
-    // ----------------------------------------------------
-    // 6. ウィンドウリサイズ対応
-    // ----------------------------------------------------
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  </script>
+/* 初期化：モード判定してスタート画面を出し分け */
+(async function boot(){
+  await detectMode();
+  if(MODE==='xr'){
+    leadEl.textContent='まわりが森になります。実際に歩いて木や虫に近づけます。虫を照準に入れて「あみをふる」。7しゅるい集めましょう。';
+    noteEl.textContent='平らな床を映してからはじめてください。歩けるスペースでどうぞ。';
+    modeEl.textContent='AR（歩行）モード';
+  } else if(MODE==='ios'){
+    leadEl.textContent='カメラをとおすと森になります。スマホをかざして見まわし、虫に近づいて「あみをふる」。';
+    noteEl.innerHTML='iPhoneは歩行追跡に非対応のため、その場で見まわすARです<br>設定→Safari→「モーションと画面の向きのアクセス」をオンに';
+    modeEl.textContent='AR（見まわし）モード';
+  } else {
+    leadEl.textContent='森の中を見わたせます。ドラッグで見まわし、虫を照準に入れて「あみをふる」。7しゅるい集めましょう。';
+    noteEl.textContent='スマホの実機（https://）で開くとARになります';
+    modeEl.textContent='プレビュー（森）モード';
+  }
+  goBtn.style.display='';
+})();
+</script>
 </body>
 </html>
