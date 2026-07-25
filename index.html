@@ -139,6 +139,19 @@
 <script>
 "use strict";
 
+/* ── 画面デバッグ表示 ───────────────────────────────── */
+var DBG=document.createElement('div');
+DBG.style.cssText='position:fixed;z-index:9999;left:0;top:0;right:0;max-height:55%;overflow:auto;'+
+  'background:rgba(0,0,0,.85);color:#7CFC9A;font:11px/1.6 ui-monospace,monospace;'+
+  'white-space:pre-wrap;padding:6px 8px;pointer-events:none';
+addEventListener('DOMContentLoaded',function(){document.body.appendChild(DBG);});
+function dbg(m,err){ DBG.innerHTML+=(err?'<span style="color:#ff8a8a">':'<span>')+m+'</span>\n'; }
+window.onerror=function(m,s,l,c){ dbg('ERR '+m+' @'+l+':'+c,true); };
+addEventListener('unhandledrejection',function(e){ dbg('REJ '+(e.reason&&e.reason.message||e.reason),true); });
+dbg('THREE = '+(typeof THREE!=='undefined'?THREE.REVISION:'未定義(CDN失敗?)'), typeof THREE==='undefined');
+dbg('OrbitControls = '+(typeof THREE!=='undefined'&&THREE.OrbitControls?'ok':'なし'));
+dbg('navigator.xr = '+(!!navigator.xr));
+
 /* ══════════════════════════════════════════════════════════════
    設定
    ══════════════════════════════════════════════════════════════ */
@@ -531,16 +544,26 @@ async function startXR(){
   session.addEventListener('end',()=>{ running=false; });
   scene.background=null;             // 現実がそのまま背景
   scene.fog=null;
+  var st=document.getElementById('start'); if(st) st.style.display='none';
   renderer.setAnimationLoop(()=>{ tick(); });
 }
 
 goBtn.onclick=async ()=>{
   goBtn.outerHTML='<div id="load">森をつくっています…</div>';
-  initThree(); buildForest(); placeBugs(); running=true;
+  try{
+    dbg('MODE = '+MODE);
+    dbg('initThree...'); initThree();
+    dbg('buildForest...'); buildForest();
+    dbg('placeBugs...'); placeBugs();
+    dbg('森の準備 OK (虫'+bugs.length+'匹)');
+  }catch(e){ dbg('初期化ERR '+(e.message||e),true); warn('初期化に失敗しました'); return; }
+  running=true;
 
   if(MODE==='xr'){
-    try{ await startXR(); }
-    catch(e){ warn('ARを起動できませんでした（'+ (e.name||e) +'）'); fallbackDesktop(); loopRAF(); }
+    try{ dbg('startXR...'); await startXR(); dbg('XR開始 OK'); }
+    catch(e){ dbg('XR ERR '+(e.name||'')+' '+(e.message||e),true);
+      warn('ARを起動できませんでした（'+ (e.name||e) +'）。森モードに切替');
+      MODE='desktop'; fallbackDesktop(); loopRAF(); }
   } else if(MODE==='ios'){
     const sOK=await enableSensor();
     const cOK=await startCameraBG();
@@ -568,9 +591,13 @@ function setupDrag(){ /* iOSでセンサー拒否時のみ簡易ドラッグ */
   renderer.domElement.addEventListener('pointerup',()=>d=null);
 }
 let yaw=0,pit=0;
-function loopRAF(){ (function raf(){ if(!running)return; requestAnimationFrame(raf);
-  if(MODE==='ios'&&!orient){ camera.rotation.set(pit,yaw,0,'YXZ'); }
-  tick(); })(); }
+function loopRAF(){
+  var st=document.getElementById('start'); if(st) st.style.display='none';
+  dbg('描画ループ開始');
+  (function raf(){ if(!running)return; requestAnimationFrame(raf);
+    if(MODE==='ios'&&!orient){ camera.rotation.set(pit,yaw,0,'YXZ'); }
+    tick(); })();
+}
 
 function warn(m){ warnEl.textContent=m; warnEl.style.display='block'; }
 
@@ -594,4 +621,4 @@ function warn(m){ warnEl.textContent=m; warnEl.style.display='block'; }
 })();
 </script>
 </body>
-</html>
+</html>ｖ
