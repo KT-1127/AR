@@ -97,7 +97,8 @@
 </head>
 <body>
 
-<video id="vid" playsinline muted autoplay style="display:none"></video>
+<video id="vid" playsinline muted autoplay
+  style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;display:none;background:#111"></video>
 
 <div id="hud">
   <div class="tally">みつけた<br><b><span id="n">0</span></b> / 7 しゅるい</div>
@@ -207,8 +208,10 @@ function initThree(){
   renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setClearColor(0x000000, 0);            // 透明クリア（裏の映像/現実を見せる）
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.xr.enabled=(MODE==='xr');
+  renderer.domElement.style.cssText='position:fixed;inset:0;z-index:1';
   document.body.appendChild(renderer.domElement);
 
   scene.add(new THREE.AmbientLight(0x556848, 1.5));
@@ -522,14 +525,15 @@ async function enableSensor(){
   addEventListener('deviceorientation', onOrient); return true;
 }
 async function startCameraBG(){
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return false;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ dbg('getUserMedia なし',true); return false; }
   try{
     const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
     vid.srcObject=st; await vid.play();
-    const tex=new THREE.VideoTexture(vid);
-    tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter;
-    scene.background=tex; return true;
-  }catch(e){ return false; }
+    vid.style.display='block';        // canvasの裏に実映像を敷く
+    scene.background=null;            // 背景は透明のまま → 映像が透ける
+    dbg('カメラ映像 '+vid.videoWidth+'x'+vid.videoHeight);
+    return true;
+  }catch(e){ dbg('カメラERR '+(e.name||'')+' '+(e.message||e),true); return false; }
 }
 
 async function startXR(){
@@ -621,4 +625,4 @@ function warn(m){ warnEl.textContent=m; warnEl.style.display='block'; }
 })();
 </script>
 </body>
-</html>ｖ
+</html>
