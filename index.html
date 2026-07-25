@@ -273,21 +273,21 @@ function buildCat(){
   const helm=new THREE.Mesh(new THREE.SphereGeometry(0.40,22,20), white);
   helm.geometry.scale(1.05,0.98,1); helm.castShadow=true; head.add(helm);
   // 黒い画面（前面のまるいレンズ）
-  const scr=new THREE.Mesh(new THREE.SphereGeometry(0.24,24,20), black);
-  scr.scale.set(1.18,0.84,0.34); scr.position.set(0,0.0,0.30); head.add(scr);
-  // 目（発光する水色）
+  const scr=new THREE.Mesh(new THREE.SphereGeometry(0.27,24,20), black);
+  scr.scale.set(1.15,0.92,0.32); scr.position.set(0,0.04,0.30); head.add(scr);
+  // 目（発光する水色のまるい目）
   [-1,1].forEach(s=>{
-    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,16,16), glow);
-    eye.scale.set(0.8,1.35,0.55); eye.position.set(s*0.115,0.03,0.40); head.add(eye);
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.052,16,16), glow);
+    eye.scale.set(0.85,1.15,0.5); eye.position.set(s*0.12,0.07,0.40); head.add(eye);
   });
   // ω の口（発光する水色のチューブ）
   const mc=new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-0.10, 0.005,0), new THREE.Vector3(-0.05,-0.055,0),
-    new THREE.Vector3( 0.00, 0.020,0), new THREE.Vector3( 0.05,-0.055,0),
-    new THREE.Vector3( 0.10, 0.005,0),
+    new THREE.Vector3(-0.075, 0.010,0), new THREE.Vector3(-0.037,-0.038,0),
+    new THREE.Vector3( 0.000, 0.014,0), new THREE.Vector3( 0.037,-0.038,0),
+    new THREE.Vector3( 0.075, 0.010,0),
   ]);
-  const mouth=new THREE.Mesh(new THREE.TubeGeometry(mc,32,0.0125,6,false), glow);
-  mouth.position.set(0,-0.075,0.405); head.add(mouth);
+  const mouth=new THREE.Mesh(new THREE.TubeGeometry(mc,32,0.011,6,false), glow);
+  mouth.position.set(0,-0.045,0.405); head.add(mouth);
 
   // 耳（外白・内水色）
   [-1,1].forEach(s=>{
