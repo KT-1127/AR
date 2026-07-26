@@ -268,6 +268,21 @@ function makeFaceTexture(){
   tex.flipY=true;       // ドームのUV(上がv=1)に合わせ、画像の上＝顔の上に
   return tex;
 }
+/* 頂点を角丸キューブへ寄せる変形（t=0で球、t=1で立方体寄り） */
+function applyRoundedCube(geo, t){
+  const p=geo.attributes.position, n=new THREE.Vector3(), cube=new THREE.Vector3(), v=new THREE.Vector3();
+  for(let i=0;i<p.count;i++){
+    v.set(p.getX(i),p.getY(i),p.getZ(i)); const r=v.length()||1; n.copy(v).divideScalar(r);
+    const m=Math.max(Math.abs(n.x),Math.abs(n.y),Math.abs(n.z))||1;
+    cube.copy(n).multiplyScalar(1/m);
+    n.lerp(cube,t).multiplyScalar(r);
+    p.setXYZ(i, n.x, n.y, n.z);
+  }
+  p.needsUpdate=true; geo.computeVertexNormals(); return geo;
+}
+function roundedCubeGeo(radius, seg, t){
+  return applyRoundedCube(new THREE.SphereGeometry(radius, seg, seg), t);
+}
 function buildCat(){
   const g=new THREE.Group();
   const white=new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.35, metalness:0.05});
@@ -279,16 +294,19 @@ function buildCat(){
   const body=new THREE.Mesh(new THREE.SphereGeometry(0.34,20,18), white);
   body.geometry.scale(1,1.15,0.95); body.position.y=0.42; body.castShadow=true; g.add(body);
 
-  // 頭（丸みのあるヘルメット）
+  // 頭（角丸キューブのヘルメット＝四角ばった輪郭）
+  const HEAD_T=0.55, HEAD_S=[1.08,1.02,0.96];   // 角丸の強さ / 縦横奥行の比
   const head=new THREE.Group(); head.position.y=0.92; g.add(head);
-  const helm=new THREE.Mesh(new THREE.SphereGeometry(0.40,22,20), white);
-  helm.geometry.scale(1.05,0.98,1); helm.castShadow=true; head.add(helm);
-  // 顔（頭の丸みに沿った浅いドームに絵を貼る＝浮かず・突き抜けず）
+  const helm=new THREE.Mesh(roundedCubeGeo(0.40, 44, HEAD_T), white);
+  helm.geometry.scale(HEAD_S[0],HEAD_S[1],HEAD_S[2]); helm.castShadow=true; head.add(helm);
+  // 顔（頭とまったく同じ角丸キューブ形の前面を切り出し、わずかに前へ浮かせて貼る）
   const faceMat=new THREE.MeshBasicMaterial({map:FACE_TEX, transparent:true, depthWrite:false});
-  // 頭の球(半径約0.40)より少しだけ大きい球の“前面キャップ”をUV付きで切り出す
-  const faceGeo=new THREE.SphereGeometry(0.408, 40, 32,
+  const faceGeo=new THREE.SphereGeometry(0.40, 44, 36,
     Math.PI*0.5 - 0.62, 1.24,      // 経度：正面まわり±（横幅）
-    Math.PI*0.5 - 0.46, 0.92);     // 緯度：正面まわり±（縦幅）
+    Math.PI*0.5 - 0.44, 0.88);     // 緯度：正面まわり±（縦幅）
+  applyRoundedCube(faceGeo, HEAD_T);                       // 頭と同じ角丸形に
+  faceGeo.scale(HEAD_S[0],HEAD_S[1],HEAD_S[2]);           // 頭と同じ比率に
+  faceGeo.scale(1.035,1.035,1.035);                        // ごくわずかに前へ浮かせる（突き抜け防止）
   // このキャップのUVを 0..1 に貼り直す（テクスチャ全体が顔に乗るように）
   const uv=faceGeo.attributes.uv, pos=faceGeo.attributes.position;
   let uMin=1,uMax=0,vMin=1,vMax=0;
