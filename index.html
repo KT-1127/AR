@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>AR しろねこ さがし ── 3分タイムアタック</title>
+<title>AR チャッピー さがし ── 3分タイムアタック</title>
 <style>
   :root{
     --paper:#F3EDE0; --ink:#23201B; --frame:#4A3B2E; --shu:#B23A2E; --sky:#3fb6e6;
@@ -101,7 +101,7 @@
 
 <!-- スタート -->
 <div id="start" class="over">
-  <h1>しろねこ さがし</h1>
+  <h1>チャッピー さがし</h1>
   <p id="lead">読み込み中…</p>
   <button class="btn" id="go" style="display:none">はじめる</button>
   <div class="note" id="note"></div>
@@ -134,15 +134,15 @@ addEventListener('unhandledrejection',function(e){ fail('REJ '+(e.reason&&e.reas
    設定
    ══════════════════════════════════════════════════════════════ */
 const CFG = {
-  TOTAL       : 20,     // しろねこの数
+  TOTAL       : 20,     // チャッピーの数
   TIME_SEC    : 180,    // 制限時間（秒）＝3分
   CATCH_ANGLE : 9.0,    // 照準の許容角(度)
   CATCH_DIST  : 2.4,    // この距離(m)まで近づくと捕まえられる
-  CAT_SCALE   : 1.0,    // しろねこの大きさ倍率
+  CAT_SCALE   : 1.0,    // チャッピーの大きさ倍率
   TREE_COUNT  : 40,
   FIELD       : 14,     // 森の半径(m)
   EYE_HEIGHT  : 1.5,
-  WANDER      : true,   // しろねこが歩き回る
+  WANDER      : true,   // チャッピーが歩き回る
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -236,7 +236,7 @@ function makeTree(x,z){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   しろねこロボ 3Dモデル
+   チャッピーロボ 3Dモデル
    ══════════════════════════════════════════════════════════════ */
 let FACE_TEX=null;
 function makeFaceTexture(){
@@ -295,7 +295,7 @@ function buildCat(){
   body.geometry.scale(1,1.15,0.95); body.position.y=0.42; body.castShadow=true; g.add(body);
 
   // 頭（角丸キューブのヘルメット＝四角ばった輪郭）
-  const HEAD_T=0.55, HEAD_S=[1.08,1.02,0.96];   // 角丸の強さ / 縦横奥行の比
+  const HEAD_T=0.34, HEAD_S=[1.06,1.05,0.86];   // 角丸の強さ / 縦横奥行の比（薄め・やわらかめ）
   const head=new THREE.Group(); head.position.y=0.92; g.add(head);
   const helm=new THREE.Mesh(roundedCubeGeo(0.40, 44, HEAD_T), white);
   helm.geometry.scale(HEAD_S[0],HEAD_S[1],HEAD_S[2]); helm.castShadow=true; head.add(helm);
@@ -321,12 +321,12 @@ function buildCat(){
   face.renderOrder=2;
   head.add(face);
 
-  // 耳（外白・内水色）
+  // 耳（外白・内水色）── 大きめ・上寄り
   [-1,1].forEach(s=>{
-    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.14,0.26,4), white);
-    ear.position.set(s*0.24,0.34,0); ear.rotation.y=Math.PI/4; ear.castShadow=true; head.add(ear);
-    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.08,0.18,4), cyan);
-    inner.position.set(s*0.24,0.34,0.03); inner.rotation.y=Math.PI/4; head.add(inner);
+    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.20,0.40,4), white);
+    ear.position.set(s*0.27,0.44,0); ear.rotation.set(0.12,Math.PI/4,s*0.18); ear.castShadow=true; head.add(ear);
+    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.28,4), cyan);
+    inner.position.set(s*0.27,0.44,0.04); inner.rotation.set(0.12,Math.PI/4,s*0.18); head.add(inner);
   });
 
   // 手（小さな白いこぶ）
@@ -370,13 +370,19 @@ function buildCat(){
 }
 
 /* ══════════════════════════════════════════════════════════════
-   しろねこを配置・歩き回らせる
+   チャッピーを配置・歩き回らせる
    ══════════════════════════════════════════════════════════════ */
 const cats=[];
 function placeCats(){
   const R = MODE==='xr' ? 5.5 : CFG.FIELD*0.7;
+  const base=CFG.CAT_SCALE*0.62;
   for(let i=0;i<CFG.TOTAL;i++){
     const c=buildCat();
+    // 大きさをばらけさせる：半分はそのまま、半分は小さめ（見つけにくい）
+    const sizeMul = Math.random()<0.5 ? 1.0 : (0.5 + Math.random()*0.2);
+    const sc = base*sizeMul;
+    c.scale.setScalar(sc);
+    c.userData.baseScale=sc;
     const a=Math.random()*6.283, r=1.2+Math.random()*R;
     const x=Math.cos(a)*r, z=Math.sin(a)*r;
     c.position.set(x,0,z);
@@ -452,7 +458,7 @@ function updateHover(){
   }
   hover=pick;
   netEl.classList.toggle('on', !!hover && gameActive);
-  if(hover && gameActive){ targetEl.textContent='しろねこ'; targetEl.classList.add('on'); }
+  if(hover && gameActive){ targetEl.textContent='チャッピー'; targetEl.classList.add('on'); }
   else targetEl.classList.remove('on');
 }
 
@@ -581,7 +587,7 @@ function setupDrag(){
 }
 
 async function begin(){
-  goBtn.outerHTML='<div id="load">森としろねこを よういしています…</div>';
+  goBtn.outerHTML='<div id="load">森とチャッピーを よういしています…</div>';
   FACE_TEX=makeFaceTexture();
   initThree(); buildForest(); placeCats();
 
@@ -605,7 +611,7 @@ document.getElementById('again').onclick=()=>{
   // 全ねこを復活
   for(const c of cats){
     c.userData.caught=false; c.visible=true;
-    c.scale.setScalar(CFG.CAT_SCALE*0.62);
+    c.scale.setScalar(c.userData.baseScale);
     const R=MODE==='xr'?5.5:CFG.FIELD*0.7;
     const a=Math.random()*6.283, r=1.2+Math.random()*R;
     c.position.set(Math.cos(a)*r,0,Math.sin(a)*r);
@@ -619,15 +625,15 @@ document.getElementById('again').onclick=()=>{
 (async function boot(){
   await detectMode();
   if(MODE==='xr'){
-    leadEl.textContent='まわりが森になり、しろねこがかくれています。歩いてさがし、近づいて「つかまえる」。3分で20匹めざそう！';
+    leadEl.textContent='まわりが森になり、チャッピーがかくれています。歩いてさがし、近づいて「つかまえる」。3分で20匹めざそう！';
     noteEl.textContent='平らな床を映してからはじめてください。歩けるスペースでどうぞ。';
     modeEl.textContent='AR（歩行）モード';
   } else if(MODE==='ios'){
-    leadEl.textContent='カメラをとおすと森になり、しろねこがかくれています。かざして見まわし、近づいて「つかまえる」。3分で20匹！';
+    leadEl.textContent='カメラをとおすと森になり、チャッピーがかくれています。かざして見まわし、近づいて「つかまえる」。3分で20匹！';
     noteEl.innerHTML='iPhoneは歩行追跡に非対応のため、その場で見まわすARです<br>設定→Safari→「モーションと画面の向きのアクセス」をオンに';
     modeEl.textContent='AR（見まわし）モード';
   } else {
-    leadEl.textContent='森にしろねこがかくれています。ドラッグで見まわし、照準に入れて「つかまえる」。3分で20匹めざそう！';
+    leadEl.textContent='森にチャッピーがかくれています。ドラッグで見まわし、照準に入れて「つかまえる」。3分で20匹めざそう！';
     noteEl.textContent='スマホの実機（https://）で開くとARになります';
     modeEl.textContent='プレビュー（森）モード';
   }
