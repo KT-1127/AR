@@ -244,7 +244,7 @@ function makeFaceTexture(){
   const g=c.getContext('2d');
   g.clearRect(0,0,W,H);                                    // 周囲は透明
   // 角丸の黒い画面
-  const x=24,y=40,w=W-48,h=H-80,r=58;
+  const x=24,y=36,w=W-48,h=H-72,r=58;
   g.beginPath();
   g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
   g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath();
@@ -252,12 +252,12 @@ function makeFaceTexture(){
   // 水色の発光
   g.fillStyle='#5fe0ff'; g.strokeStyle='#5fe0ff';
   g.shadowColor='#5fe0ff'; g.shadowBlur=22;
-  // 目（縦長のまるい目・少し大きく・左右に広く）
-  g.beginPath(); g.ellipse(W*0.30,H*0.43,29,44,0,0,6.283); g.fill();
-  g.beginPath(); g.ellipse(W*0.70,H*0.43,29,44,0,0,6.283); g.fill();
-  // ω の口（少し大きく）
+  // 目（オリジナル実測：中心 x=0.23/0.77・y=0.45、縦長オーバル）
+  g.beginPath(); g.ellipse(W*0.255,H*0.46,32,45,0,0,6.283); g.fill();
+  g.beginPath(); g.ellipse(W*0.745,H*0.46,32,45,0,0,6.283); g.fill();
+  // ω の口（実測：中心 y=0.65、幅は黒画面の約0.33）
   g.lineWidth=15; g.lineJoin='round'; g.lineCap='round';
-  const my=H*0.63, mw=66;
+  const my=H*0.63, mw=76;
   g.beginPath();
   g.moveTo(W/2-mw, my);
   g.quadraticCurveTo(W/2-mw*0.5, my+26, W/2, my+2);
