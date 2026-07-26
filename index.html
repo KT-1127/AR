@@ -265,6 +265,7 @@ function makeFaceTexture(){
   g.stroke();
   const tex=new THREE.CanvasTexture(c);
   tex.anisotropy=4;
+  tex.flipY=true;       // ドームのUV(上がv=1)に合わせ、画像の上＝顔の上に
   return tex;
 }
 function buildCat(){
@@ -282,10 +283,23 @@ function buildCat(){
   const head=new THREE.Group(); head.position.y=0.92; g.add(head);
   const helm=new THREE.Mesh(new THREE.SphereGeometry(0.40,22,20), white);
   helm.geometry.scale(1.05,0.98,1); helm.castShadow=true; head.add(helm);
-  // 顔（黒い画面＋目＋口を1枚の絵として頭の前面に貼る。周囲は透明）
+  // 顔（頭の丸みに沿った浅いドームに絵を貼る＝浮かず・突き抜けず）
   const faceMat=new THREE.MeshBasicMaterial({map:FACE_TEX, transparent:true, depthWrite:false});
-  const face=new THREE.Mesh(new THREE.PlaneGeometry(0.50,0.375), faceMat);
-  face.position.set(0,0.02,0.435);
+  // 頭の球(半径約0.40)より少しだけ大きい球の“前面キャップ”をUV付きで切り出す
+  const faceGeo=new THREE.SphereGeometry(0.408, 40, 32,
+    Math.PI*0.5 - 0.62, 1.24,      // 経度：正面まわり±（横幅）
+    Math.PI*0.5 - 0.46, 0.92);     // 緯度：正面まわり±（縦幅）
+  // このキャップのUVを 0..1 に貼り直す（テクスチャ全体が顔に乗るように）
+  const uv=faceGeo.attributes.uv, pos=faceGeo.attributes.position;
+  let uMin=1,uMax=0,vMin=1,vMax=0;
+  for(let i=0;i<uv.count;i++){ const u=uv.getX(i),v=uv.getY(i);
+    if(u<uMin)uMin=u; if(u>uMax)uMax=u; if(v<vMin)vMin=v; if(v>vMax)vMax=v; }
+  for(let i=0;i<uv.count;i++){
+    uv.setXY(i, (uv.getX(i)-uMin)/(uMax-uMin), (uv.getY(i)-vMin)/(vMax-vMin));
+  }
+  uv.needsUpdate=true;
+  const face=new THREE.Mesh(faceGeo, faceMat);
+  face.position.set(0,0.02,0);
   face.renderOrder=2;
   head.add(face);
 
