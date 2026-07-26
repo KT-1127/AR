@@ -301,12 +301,14 @@ function buildCat(){
   face.renderOrder=2;
   head.add(face);
 
-  // 耳（根元太め・左右に開いて外へ傾ける）── 前面＝水色、後ろ＝白
+  // 耳（頭の上に収める・前面＝水色を大きく見せる）
   [-1,1].forEach(s=>{
-    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.36,4), white);
-    ear.position.set(s*0.26,0.40,-0.02); ear.rotation.set(0.10,Math.PI/4,s*0.34); ear.castShadow=true; head.add(ear);
-    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.16,0.30,4), cyan);
-    inner.position.set(s*0.26,0.40,0.05); inner.rotation.set(0.10,Math.PI/4,s*0.34); head.add(inner);
+    // 白い外殻（後ろ側・薄め）
+    const ear=new THREE.Mesh(new THREE.ConeGeometry(0.19,0.34,4), white);
+    ear.position.set(s*0.20,0.40,-0.05); ear.rotation.set(0.14,Math.PI/4,s*0.16); ear.castShadow=true; head.add(ear);
+    // 水色の内側（外殻より少し大きく＝縁がはみ出て水色が見える・前方へ）
+    const inner=new THREE.Mesh(new THREE.ConeGeometry(0.17,0.34,4), cyan);
+    inner.position.set(s*0.20,0.40,0.02); inner.rotation.set(0.14,Math.PI/4,s*0.16); head.add(inner);
   });
 
   // 手（小さな白いこぶ）
